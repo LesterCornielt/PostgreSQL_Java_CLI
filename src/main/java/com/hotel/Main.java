@@ -1,459 +1,465 @@
 package com.hotel;
 
-import com.hotel.service.AuthService;
-import com.hotel.service.RoomService;
-import com.hotel.service.ReservationService;
-import com.hotel.service.ReportService;
+import com.hotel.config.DatabaseConfig;
 import com.hotel.model.*;
-import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
-import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
-import org.jline.reader.impl.completer.StringsCompleter;
-
-import java.io.IOException;
+import com.hotel.service.*;
+import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Scanner;
 import java.util.Map;
+import java.util.Scanner;
 
 public class Main {
-    private static final List<String> COMANDOS = Arrays.asList(
-        "iniciar-sesion", "registrar", "salir",
-        "ver-habitaciones", "hacer-reserva", "cancelar-reserva",
-        "ver-reservas", "gestionar-habitaciones", "ver-reportes"
-    );
+    private static final Scanner scanner = new Scanner(System.in);
+    private static final ServicioCliente servicioCliente = new ServicioCliente();
+    private static final ServicioHabitacion servicioHabitacion = new ServicioHabitacion();
+    private static final ServicioReserva servicioReserva = new ServicioReserva();
+    private static final ServicioReporte servicioReporte = new ServicioReporte();
 
     public static void main(String[] args) {
         try {
-            Terminal terminal = TerminalBuilder.builder()
-                .system(true)
-                .build();
-
-            LineReader lector = LineReaderBuilder.builder()
-                .terminal(terminal)
-                .completer(new StringsCompleter(COMANDOS))
-                .build();
-
-            System.out.println("Bienvenido al Sistema de Reservas del Hotel");
-            System.out.println("==========================================");
+            // Verificar conexión a la base de datos
+            try (Connection conn = DatabaseConfig.getConnection()) {
+                System.out.println("Conexión exitosa a la base de datos");
+            }
 
             while (true) {
-                String linea = lector.readLine("hotel> ");
-                if (linea == null || linea.equalsIgnoreCase("salir")) {
-                    break;
+                mostrarMenu();
+                int opcion = scanner.nextInt();
+                scanner.nextLine(); // Consumir el salto de línea
+
+                switch (opcion) {
+                    case 1:
+                        gestionarClientes();
+                        break;
+                    case 2:
+                        gestionarHabitaciones();
+                        break;
+                    case 3:
+                        gestionarReservas();
+                        break;
+                    case 4:
+                        generarReportes();
+                        break;
+                    case 5:
+                        System.out.println("¡Hasta luego!");
+                        return;
+                    default:
+                        System.out.println("Opción no válida");
                 }
-
-                procesarComando(linea.trim());
-            }
-
-        } catch (IOException e) {
-            System.err.println("Error al inicializar la terminal: " + e.getMessage());
-        }
-    }
-
-    private static void procesarComando(String comando) {
-        String[] partes = comando.split("\\s+");
-        String cmd = partes[0].toLowerCase();
-
-        try {
-            switch (cmd) {
-                case "iniciar-sesion":
-                    manejarInicioSesion();
-                    break;
-                case "registrar":
-                    manejarRegistro();
-                    break;
-                case "ver-habitaciones":
-                    if (AuthService.isAuthenticated()) {
-                        manejarVerHabitaciones();
-                    } else {
-                        System.out.println("Debe iniciar sesión primero.");
-                    }
-                    break;
-                case "hacer-reserva":
-                    if (AuthService.isAuthenticated()) {
-                        manejarHacerReserva();
-                    } else {
-                        System.out.println("Debe iniciar sesión primero.");
-                    }
-                    break;
-                case "cancelar-reserva":
-                    if (AuthService.isAuthenticated()) {
-                        manejarCancelarReserva();
-                    } else {
-                        System.out.println("Debe iniciar sesión primero.");
-                    }
-                    break;
-                case "ver-reservas":
-                    if (AuthService.isAuthenticated()) {
-                        manejarVerReservas();
-                    } else {
-                        System.out.println("Debe iniciar sesión primero.");
-                    }
-                    break;
-                case "gestionar-habitaciones":
-                    if (AuthService.hasRole("MANAGER")) {
-                        manejarGestionHabitaciones();
-                    } else {
-                        System.out.println("No tiene permisos para esta operación.");
-                    }
-                    break;
-                case "ver-reportes":
-                    if (AuthService.hasRole("MANAGER")) {
-                        manejarVerReportes();
-                    } else {
-                        System.out.println("No tiene permisos para esta operación.");
-                    }
-                    break;
-                default:
-                    System.out.println("Comando no reconocido. Comandos disponibles:");
-                    COMANDOS.forEach(c -> System.out.println("  - " + c));
             }
         } catch (SQLException e) {
-            System.err.println("Error en la operación: " + e.getMessage());
+            System.err.println("Error de conexión a la base de datos: " + e.getMessage());
         }
     }
 
-    private static void manejarInicioSesion() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Usuario: ");
-        String usuario = scanner.nextLine();
-        System.out.print("Contraseña: ");
-        String contraseña = scanner.nextLine();
-
-        User usuarioActual = AuthService.login(usuario, contraseña);
-        if (usuarioActual != null) {
-            System.out.println("Bienvenido, " + usuarioActual.getUsername() + "!");
-        } else {
-            System.out.println("Credenciales inválidas.");
-        }
-    }
-
-    private static void manejarRegistro() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Usuario: ");
-        String usuario = scanner.nextLine();
-        System.out.print("Contraseña: ");
-        String contraseña = scanner.nextLine();
-        System.out.print("Correo electrónico: ");
-        String correo = scanner.nextLine();
-        System.out.print("Rol (CLIENTE/EMPLEADO/GERENTE): ");
-        String rol = scanner.nextLine().toUpperCase();
-
-        User nuevoUsuario = AuthService.register(usuario, contraseña, correo, rol);
-        if (nuevoUsuario != null) {
-            System.out.println("Usuario registrado exitosamente.");
-        } else {
-            System.out.println("Error al registrar usuario.");
-        }
-    }
-
-    private static void manejarVerHabitaciones() throws SQLException {
-        List<Room> habitaciones = RoomService.getAvailableRooms();
-        System.out.println("\nHabitaciones Disponibles:");
-        System.out.println("========================");
-        for (Room habitacion : habitaciones) {
-            System.out.printf("Habitación %s - Tipo: %s - Capacidad: %d - Precio: %.2f\n",
-                habitacion.getRoomNumber(), habitacion.getRoomType(), 
-                habitacion.getCapacity(), habitacion.getPricePerNight());
-            if (habitacion.getFeatures() != null) {
-                System.out.println("Características:");
-                for (RoomFeature caracteristica : habitacion.getFeatures()) {
-                    System.out.printf("  - %s: %s\n", 
-                        caracteristica.getFeatureName(), caracteristica.getFeatureValue());
-                }
-            }
-            System.out.println();
-        }
-    }
-
-    private static void manejarHacerReserva() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Fecha de entrada (YYYY-MM-DD): ");
-        LocalDate fechaEntrada = LocalDate.parse(scanner.nextLine());
-        System.out.print("Fecha de salida (YYYY-MM-DD): ");
-        LocalDate fechaSalida = LocalDate.parse(scanner.nextLine());
-        System.out.print("Número de huéspedes: ");
-        int numeroHuespedes = Integer.parseInt(scanner.nextLine());
-
-        // Mostrar habitaciones disponibles
-        List<Room> habitacionesDisponibles = RoomService.getAvailableRooms();
-        System.out.println("\nHabitaciones disponibles para las fechas seleccionadas:");
-        for (Room habitacion : habitacionesDisponibles) {
-            System.out.printf("%d. Habitación %s - Tipo: %s - Capacidad: %d - Precio: %.2f\n",
-                habitacion.getRoomId(), habitacion.getRoomNumber(), 
-                habitacion.getRoomType(), habitacion.getCapacity(), 
-                habitacion.getPricePerNight());
-        }
-
-        System.out.print("\nSeleccione el ID de la habitación: ");
-        int idHabitacion = Integer.parseInt(scanner.nextLine());
-
-        // Crear la reserva
-        Reservation reserva = new Reservation();
-        reserva.setClientId(AuthService.getCurrentUser().getUserId());
-        reserva.setCheckInDate(fechaEntrada);
-        reserva.setCheckOutDate(fechaSalida);
-        reserva.setNumberOfGuests(numeroHuespedes);
-        reserva.setStatus("PENDIENTE");
-
-        // Agregar detalles de la reserva
-        Room habitacionSeleccionada = RoomService.getRoomById(idHabitacion);
-        ReservationDetail detalle = new ReservationDetail();
-        detalle.setRoomId(idHabitacion);
-        detalle.setPricePerNight(habitacionSeleccionada.getPricePerNight());
-        reserva.getDetails().add(detalle);
-
-        // Calcular precio total
-        long dias = java.time.temporal.ChronoUnit.DAYS.between(fechaEntrada, fechaSalida);
-        reserva.setTotalPrice(habitacionSeleccionada.getPricePerNight()
-            .multiply(new java.math.BigDecimal(dias)));
-
-        Reservation nuevaReserva = ReservationService.createReservation(reserva);
-        if (nuevaReserva != null) {
-            System.out.println("Reserva creada exitosamente.");
-        } else {
-            System.out.println("Error al crear la reserva.");
-        }
-    }
-
-    private static void manejarCancelarReserva() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("ID de la reserva a cancelar: ");
-        int idReserva = Integer.parseInt(scanner.nextLine());
-
-        if (ReservationService.cancelReservation(idReserva)) {
-            System.out.println("Reserva cancelada exitosamente.");
-        } else {
-            System.out.println("Error al cancelar la reserva.");
-        }
-    }
-
-    private static void manejarVerReservas() throws SQLException {
-        List<Reservation> reservas;
-        if (AuthService.hasRole("EMPLOYEE") || AuthService.hasRole("MANAGER")) {
-            reservas = ReservationService.getAllReservations();
-        } else {
-            reservas = ReservationService.getReservationsByClient(
-                AuthService.getCurrentUser().getUserId());
-        }
-
-        System.out.println("\nReservas:");
-        System.out.println("=========");
-        for (Reservation reserva : reservas) {
-            System.out.printf("ID: %d - Entrada: %s - Salida: %s - Estado: %s\n",
-                reserva.getReservationId(),
-                reserva.getCheckInDate(),
-                reserva.getCheckOutDate(),
-                reserva.getStatus());
-            System.out.println("Habitaciones:");
-            for (ReservationDetail detalle : reserva.getDetails()) {
-                try {
-                    Room habitacion = RoomService.getRoomById(detalle.getRoomId());
-                    System.out.printf("  - Habitación %s - Precio por noche: %.2f\n",
-                        habitacion.getRoomNumber(), detalle.getPricePerNight());
-                } catch (SQLException e) {
-                    System.out.println("  - Error al obtener detalles de la habitación");
-                }
-            }
-            System.out.println();
-        }
-    }
-
-    private static void manejarGestionHabitaciones() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("\nGestión de Habitaciones");
-        System.out.println("1. Agregar habitación");
-        System.out.println("2. Modificar habitación");
-        System.out.println("3. Eliminar habitación");
+    private static void mostrarMenu() {
+        System.out.println("\n=== SISTEMA DE GESTIÓN HOTELERA ===");
+        System.out.println("1. Gestión de Clientes");
+        System.out.println("2. Gestión de Habitaciones");
+        System.out.println("3. Gestión de Reservas");
+        System.out.println("4. Reportes");
+        System.out.println("5. Salir");
         System.out.print("Seleccione una opción: ");
-        
-        int opcion = Integer.parseInt(scanner.nextLine());
-        switch (opcion) {
-            case 1:
-                manejarAgregarHabitacion();
-                break;
-            case 2:
-                manejarModificarHabitacion();
-                break;
-            case 3:
-                manejarEliminarHabitacion();
-                break;
-            default:
-                System.out.println("Opción no válida.");
+    }
+
+    private static void gestionarClientes() throws SQLException {
+        while (true) {
+            System.out.println("\n=== GESTIÓN DE CLIENTES ===");
+            System.out.println("1. Registrar nuevo cliente");
+            System.out.println("2. Buscar cliente");
+            System.out.println("3. Actualizar cliente");
+            System.out.println("4. Eliminar cliente");
+            System.out.println("5. Volver al menú principal");
+            System.out.print("Seleccione una opción: ");
+
+            int opcion = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
+
+            switch (opcion) {
+                case 1:
+                    registrarCliente();
+                    break;
+                case 2:
+                    buscarCliente();
+                    break;
+                case 3:
+                    actualizarCliente();
+                    break;
+                case 4:
+                    eliminarCliente();
+                    break;
+                case 5:
+                    return;
+                default:
+                    System.out.println("Opción no válida");
+            }
         }
     }
 
-    private static void manejarAgregarHabitacion() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        Room habitacion = new Room();
-        
+    private static void registrarCliente() throws SQLException {
+        System.out.println("\n=== REGISTRAR NUEVO CLIENTE ===");
+        System.out.print("Nombre: ");
+        String nombre = scanner.nextLine();
+        System.out.print("Apellido: ");
+        String apellido = scanner.nextLine();
+        System.out.print("Email: ");
+        String email = scanner.nextLine();
+        System.out.print("Teléfono: ");
+        String telefono = scanner.nextLine();
+        System.out.print("Dirección: ");
+        String direccion = scanner.nextLine();
+
+        Cliente cliente = new Cliente();
+        cliente.setNombre(nombre);
+        cliente.setApellido(apellido);
+        cliente.setEmail(email);
+        cliente.setTelefono(telefono);
+        cliente.setDireccion(direccion);
+
+        servicioCliente.agregarCliente(cliente);
+        System.out.println("Cliente registrado exitosamente");
+    }
+
+    private static void buscarCliente() throws SQLException {
+        System.out.println("\n=== BUSCAR CLIENTE ===");
+        System.out.print("Ingrese el ID del cliente: ");
+        int idCliente = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+
+        Cliente cliente = servicioCliente.obtenerClientePorId(idCliente);
+        if (cliente != null) {
+            System.out.println("\nInformación del cliente:");
+            System.out.println("ID: " + cliente.getIdCliente());
+            System.out.println("Nombre: " + cliente.getNombre());
+            System.out.println("Apellido: " + cliente.getApellido());
+            System.out.println("Email: " + cliente.getEmail());
+            System.out.println("Teléfono: " + cliente.getTelefono());
+            System.out.println("Dirección: " + cliente.getDireccion());
+        } else {
+            System.out.println("Cliente no encontrado");
+        }
+    }
+
+    private static void actualizarCliente() throws SQLException {
+        System.out.println("\n=== ACTUALIZAR CLIENTE ===");
+        System.out.print("Ingrese el ID del cliente a actualizar: ");
+        int idCliente = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+
+        Cliente cliente = servicioCliente.obtenerClientePorId(idCliente);
+        if (cliente != null) {
+            System.out.print("Nuevo nombre (actual: " + cliente.getNombre() + "): ");
+            String nombre = scanner.nextLine();
+            System.out.print("Nuevo apellido (actual: " + cliente.getApellido() + "): ");
+            String apellido = scanner.nextLine();
+            System.out.print("Nuevo email (actual: " + cliente.getEmail() + "): ");
+            String email = scanner.nextLine();
+            System.out.print("Nuevo teléfono (actual: " + cliente.getTelefono() + "): ");
+            String telefono = scanner.nextLine();
+            System.out.print("Nueva dirección (actual: " + cliente.getDireccion() + "): ");
+            String direccion = scanner.nextLine();
+
+            cliente.setNombre(nombre);
+            cliente.setApellido(apellido);
+            cliente.setEmail(email);
+            cliente.setTelefono(telefono);
+            cliente.setDireccion(direccion);
+
+            servicioCliente.actualizarCliente(cliente);
+            System.out.println("Cliente actualizado exitosamente");
+        } else {
+            System.out.println("Cliente no encontrado");
+        }
+    }
+
+    private static void eliminarCliente() throws SQLException {
+        System.out.println("\n=== ELIMINAR CLIENTE ===");
+        System.out.print("Ingrese el ID del cliente a eliminar: ");
+        int idCliente = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+
+        servicioCliente.eliminarCliente(idCliente);
+        System.out.println("Cliente eliminado exitosamente");
+    }
+
+    private static void gestionarHabitaciones() throws SQLException {
+        while (true) {
+            System.out.println("\n=== GESTIÓN DE HABITACIONES ===");
+            System.out.println("1. Ver habitaciones disponibles");
+            System.out.println("2. Agregar nueva habitación");
+            System.out.println("3. Actualizar habitación");
+            System.out.println("4. Eliminar habitación");
+            System.out.println("5. Volver al menú principal");
+            System.out.print("Seleccione una opción: ");
+
+            int opcion = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
+
+            switch (opcion) {
+                case 1:
+                    verHabitacionesDisponibles();
+                    break;
+                case 2:
+                    agregarHabitacion();
+                    break;
+                case 3:
+                    actualizarHabitacion();
+                    break;
+                case 4:
+                    eliminarHabitacion();
+                    break;
+                case 5:
+                    return;
+                default:
+                    System.out.println("Opción no válida");
+            }
+        }
+    }
+
+    private static void verHabitacionesDisponibles() throws SQLException {
+        System.out.println("\n=== HABITACIONES DISPONIBLES ===");
+        List<Habitacion> habitaciones = servicioHabitacion.obtenerHabitacionesDisponibles();
+        for (Habitacion habitacion : habitaciones) {
+            System.out.println("\nHabitación #" + habitacion.getNumHabitacion());
+            System.out.println("Piso: " + habitacion.getPiso());
+            System.out.println("Tipo: " + habitacion.getTipoHabitacion());
+            System.out.println("Estado: " + habitacion.getEstado());
+        }
+    }
+
+    private static void agregarHabitacion() throws SQLException {
+        System.out.println("\n=== AGREGAR NUEVA HABITACIÓN ===");
         System.out.print("Número de habitación: ");
-        habitacion.setRoomNumber(scanner.nextLine());
-        System.out.print("Tipo de habitación: ");
-        habitacion.setRoomType(scanner.nextLine());
-        System.out.print("Capacidad: ");
-        habitacion.setCapacity(Integer.parseInt(scanner.nextLine()));
-        System.out.print("Precio por noche: ");
-        habitacion.setPricePerNight(new java.math.BigDecimal(scanner.nextLine()));
-        System.out.print("Descripción: ");
-        habitacion.setDescription(scanner.nextLine());
-        habitacion.setStatus("DISPONIBLE");
+        String numHabitacion = scanner.nextLine();
+        System.out.print("Piso: ");
+        int piso = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+        System.out.print("ID de tipo de habitación: ");
+        int idTipo = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
 
-        if (RoomService.addRoom(habitacion)) {
-            System.out.println("Habitación agregada exitosamente.");
+        Habitacion habitacion = new Habitacion();
+        habitacion.setNumHabitacion(numHabitacion);
+        habitacion.setPiso(piso);
+        habitacion.setIdTipo(idTipo);
+        habitacion.setEstado("DISPONIBLE");
+        habitacion.setDisponible(true);
+
+        servicioHabitacion.agregarHabitacion(habitacion);
+        System.out.println("Habitación agregada exitosamente");
+    }
+
+    private static void actualizarHabitacion() throws SQLException {
+        System.out.println("\n=== ACTUALIZAR HABITACIÓN ===");
+        System.out.print("Ingrese el número de habitación a actualizar: ");
+        String numHabitacion = scanner.nextLine();
+
+        Habitacion habitacion = servicioHabitacion.obtenerHabitacionPorId(numHabitacion);
+        if (habitacion != null) {
+            System.out.print("Nuevo piso (actual: " + habitacion.getPiso() + "): ");
+            int piso = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
+            System.out.print("Nuevo ID de tipo (actual: " + habitacion.getIdTipo() + "): ");
+            int idTipo = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
+            System.out.print("Nuevo estado (actual: " + habitacion.getEstado() + "): ");
+            String estado = scanner.nextLine();
+
+            habitacion.setPiso(piso);
+            habitacion.setIdTipo(idTipo);
+            habitacion.setEstado(estado);
+            habitacion.setDisponible(estado.equals("DISPONIBLE"));
+
+            servicioHabitacion.actualizarHabitacion(habitacion);
+            System.out.println("Habitación actualizada exitosamente");
         } else {
-            System.out.println("Error al agregar la habitación.");
+            System.out.println("Habitación no encontrada");
         }
     }
 
-    private static void manejarModificarHabitacion() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("ID de la habitación a modificar: ");
-        int idHabitacion = Integer.parseInt(scanner.nextLine());
+    private static void eliminarHabitacion() throws SQLException {
+        System.out.println("\n=== ELIMINAR HABITACIÓN ===");
+        System.out.print("Ingrese el número de habitación a eliminar: ");
+        String numHabitacion = scanner.nextLine();
 
-        Room habitacion = RoomService.getRoomById(idHabitacion);
-        if (habitacion == null) {
-            System.out.println("Habitación no encontrada.");
-            return;
-        }
+        servicioHabitacion.eliminarHabitacion(numHabitacion);
+        System.out.println("Habitación eliminada exitosamente");
+    }
 
-        System.out.print("Nuevo número de habitación [" + habitacion.getRoomNumber() + "]: ");
-        String numeroHabitacion = scanner.nextLine();
-        if (!numeroHabitacion.isEmpty()) habitacion.setRoomNumber(numeroHabitacion);
+    private static void gestionarReservas() throws SQLException {
+        while (true) {
+            System.out.println("\n=== GESTIÓN DE RESERVAS ===");
+            System.out.println("1. Crear nueva reserva");
+            System.out.println("2. Ver reservas de un cliente");
+            System.out.println("3. Cancelar reserva");
+            System.out.println("4. Volver al menú principal");
+            System.out.print("Seleccione una opción: ");
 
-        System.out.print("Nuevo tipo de habitación [" + habitacion.getRoomType() + "]: ");
-        String tipoHabitacion = scanner.nextLine();
-        if (!tipoHabitacion.isEmpty()) habitacion.setRoomType(tipoHabitacion);
+            int opcion = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
 
-        System.out.print("Nueva capacidad [" + habitacion.getCapacity() + "]: ");
-        String capacidad = scanner.nextLine();
-        if (!capacidad.isEmpty()) habitacion.setCapacity(Integer.parseInt(capacidad));
-
-        System.out.print("Nuevo precio por noche [" + habitacion.getPricePerNight() + "]: ");
-        String precio = scanner.nextLine();
-        if (!precio.isEmpty()) habitacion.setPricePerNight(new java.math.BigDecimal(precio));
-
-        System.out.print("Nueva descripción [" + habitacion.getDescription() + "]: ");
-        String descripcion = scanner.nextLine();
-        if (!descripcion.isEmpty()) habitacion.setDescription(descripcion);
-
-        if (RoomService.updateRoom(habitacion)) {
-            System.out.println("Habitación actualizada exitosamente.");
-        } else {
-            System.out.println("Error al actualizar la habitación.");
+            switch (opcion) {
+                case 1:
+                    crearReserva();
+                    break;
+                case 2:
+                    verReservasCliente();
+                    break;
+                case 3:
+                    cancelarReserva();
+                    break;
+                case 4:
+                    return;
+                default:
+                    System.out.println("Opción no válida");
+            }
         }
     }
 
-    private static void manejarEliminarHabitacion() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("ID de la habitación a eliminar: ");
-        int idHabitacion = Integer.parseInt(scanner.nextLine());
+    private static void crearReserva() throws SQLException {
+        System.out.println("\n=== CREAR NUEVA RESERVA ===");
+        System.out.print("ID del cliente: ");
+        int idCliente = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+        System.out.print("ID del empleado: ");
+        int idEmpleado = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+        System.out.print("Fecha de inicio (YYYY-MM-DD): ");
+        String fechaInicioStr = scanner.nextLine();
+        System.out.print("Fecha de fin (YYYY-MM-DD): ");
+        String fechaFinStr = scanner.nextLine();
+        System.out.print("Número de huéspedes: ");
+        int numHuespedes = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
 
-        if (RoomService.deleteRoom(idHabitacion)) {
-            System.out.println("Habitación eliminada exitosamente.");
-        } else {
-            System.out.println("Error al eliminar la habitación.");
+        Reserva reserva = new Reserva();
+        reserva.setIdCliente(idCliente);
+        reserva.setIdEmpleado(idEmpleado);
+        reserva.setFechaInicio(java.time.LocalDate.parse(fechaInicioStr));
+        reserva.setFechaFin(java.time.LocalDate.parse(fechaFinStr));
+        reserva.setNumHuespedes(numHuespedes);
+        reserva.setEstado("PENDIENTE");
+
+        servicioReserva.crearReserva(reserva);
+        System.out.println("Reserva creada exitosamente");
+    }
+
+    private static void verReservasCliente() throws SQLException {
+        System.out.println("\n=== VER RESERVAS DE CLIENTE ===");
+        System.out.print("Ingrese el ID del cliente: ");
+        int idCliente = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+
+        List<Reserva> reservas = servicioReserva.obtenerReservasPorCliente(idCliente);
+        for (Reserva reserva : reservas) {
+            System.out.println("\nReserva #" + reserva.getIdReserva());
+            System.out.println("Fecha de inicio: " + reserva.getFechaInicio());
+            System.out.println("Fecha de fin: " + reserva.getFechaFin());
+            System.out.println("Estado: " + reserva.getEstado());
+            System.out.println("Total: " + reserva.getTotalEstadia());
         }
     }
 
-    private static void manejarVerReportes() throws SQLException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("\nReportes Disponibles");
-        System.out.println("1. Estadísticas de ocupación");
-        System.out.println("2. Ingresos por mes");
-        System.out.println("3. Reservas de clientes");
-        System.out.println("4. Habitaciones disponibles");
-        System.out.print("Seleccione una opción: ");
-        
-        int opcion = Integer.parseInt(scanner.nextLine());
-        switch (opcion) {
-            case 1:
-                mostrarEstadisticasOcupacion();
-                break;
-            case 2:
-                mostrarIngresosPorMes();
-                break;
-            case 3:
-                mostrarReservasClientes();
-                break;
-            case 4:
-                mostrarHabitacionesDisponibles();
-                break;
-            default:
-                System.out.println("Opción no válida.");
+    private static void cancelarReserva() throws SQLException {
+        System.out.println("\n=== CANCELAR RESERVA ===");
+        System.out.print("Ingrese el ID de la reserva a cancelar: ");
+        int idReserva = scanner.nextInt();
+        scanner.nextLine(); // Consumir el salto de línea
+
+        servicioReserva.cancelarReserva(idReserva);
+        System.out.println("Reserva cancelada exitosamente");
+    }
+
+    private static void generarReportes() throws SQLException {
+        while (true) {
+            System.out.println("\n=== REPORTES ===");
+            System.out.println("1. Estadísticas de ocupación");
+            System.out.println("2. Ingresos por mes");
+            System.out.println("3. Reservas por cliente");
+            System.out.println("4. Habitaciones disponibles");
+            System.out.println("5. Volver al menú principal");
+            System.out.print("Seleccione una opción: ");
+
+            int opcion = scanner.nextInt();
+            scanner.nextLine(); // Consumir el salto de línea
+
+            switch (opcion) {
+                case 1:
+                    mostrarEstadisticasOcupacion();
+                    break;
+                case 2:
+                    mostrarIngresosPorMes();
+                    break;
+                case 3:
+                    mostrarReservasClientes();
+                    break;
+                case 4:
+                    mostrarHabitacionesDisponibles();
+                    break;
+                case 5:
+                    return;
+                default:
+                    System.out.println("Opción no válida");
+            }
         }
     }
 
     private static void mostrarEstadisticasOcupacion() throws SQLException {
-        Map<String, Object> estadisticas = ReportService.getRoomOccupancyStats();
-        List<Map<String, Object>> estadisticasHabitaciones = 
-            (List<Map<String, Object>>) estadisticas.get("roomStats");
+        System.out.println("\n=== ESTADÍSTICAS DE OCUPACIÓN ===");
+        var estadisticas = servicioReporte.obtenerEstadisticasOcupacion();
+        var habitaciones = (List<Map<String, Object>>) estadisticas.get("estadisticasHabitaciones");
         
-        System.out.println("\nEstadísticas de Ocupación");
-        System.out.println("========================");
-        for (Map<String, Object> habitacion : estadisticasHabitaciones) {
-            System.out.printf("Habitación %s (%s):\n",
-                habitacion.get("roomNumber"), habitacion.get("roomType"));
-            System.out.printf("  Total de reservas: %d\n", habitacion.get("totalReservations"));
-            System.out.printf("  Días ocupados: %d\n", habitacion.get("totalDaysOccupied"));
-            System.out.println();
+        for (var habitacion : habitaciones) {
+            System.out.println("\nHabitación #" + habitacion.get("numHabitacion"));
+            System.out.println("Piso: " + habitacion.get("piso"));
+            System.out.println("Tipo: " + habitacion.get("tipoHabitacion"));
+            System.out.println("Total de reservas: " + habitacion.get("totalReservas"));
+            System.out.println("Total de días ocupada: " + habitacion.get("totalDiasOcupada"));
         }
     }
 
     private static void mostrarIngresosPorMes() throws SQLException {
-        Map<String, Object> ingresos = ReportService.getRevenueByMonth();
-        List<Map<String, Object>> ingresosMensuales = 
-            (List<Map<String, Object>>) ingresos.get("monthlyRevenue");
+        System.out.println("\n=== INGRESOS POR MES ===");
+        var ingresos = servicioReporte.obtenerIngresosPorMes();
+        var meses = (List<Map<String, Object>>) ingresos.get("ingresosMensuales");
         
-        System.out.println("\nIngresos por Mes");
-        System.out.println("===============");
-        for (Map<String, Object> mes : ingresosMensuales) {
-            System.out.printf("%d-%02d: %.2f\n",
-                mes.get("year"), mes.get("month"), mes.get("totalRevenue"));
+        for (var mes : meses) {
+            System.out.println("\nAño: " + mes.get("año"));
+            System.out.println("Mes: " + mes.get("mes"));
+            System.out.println("Total de ingresos: " + mes.get("totalIngresos"));
         }
     }
 
     private static void mostrarReservasClientes() throws SQLException {
-        Map<String, Object> reservas = ReportService.getClientReservations();
-        List<Map<String, Object>> reservasClientes = 
-            (List<Map<String, Object>>) reservas.get("clientReservations");
+        System.out.println("\n=== RESERVAS POR CLIENTE ===");
+        var reservas = servicioReporte.obtenerReservasClientes();
+        var clientes = (List<Map<String, Object>>) reservas.get("reservasClientes");
         
-        System.out.println("\nReservas de Clientes");
-        System.out.println("===================");
-        for (Map<String, Object> reserva : reservasClientes) {
-            System.out.printf("Cliente: %s %s\n",
-                reserva.get("firstName"), reserva.get("lastName"));
-            System.out.printf("Reserva #%d: %s a %s\n",
-                reserva.get("reservationId"),
-                reserva.get("checkInDate"),
-                reserva.get("checkOutDate"));
-            System.out.printf("Estado: %s - Habitaciones: %d - Total: %.2f\n",
-                reserva.get("status"),
-                reserva.get("numberOfRooms"),
-                reserva.get("totalPrice"));
-            System.out.println();
+        for (var cliente : clientes) {
+            System.out.println("\nCliente: " + cliente.get("nombre") + " " + cliente.get("apellido"));
+            System.out.println("ID de reserva: " + cliente.get("idReserva"));
+            System.out.println("Fecha de inicio: " + cliente.get("fechaInicio"));
+            System.out.println("Fecha de fin: " + cliente.get("fechaFin"));
+            System.out.println("Estado: " + cliente.get("estado"));
+            System.out.println("Número de habitaciones: " + cliente.get("numHabitaciones"));
+            System.out.println("Total: " + cliente.get("totalEstadia"));
         }
     }
 
     private static void mostrarHabitacionesDisponibles() throws SQLException {
-        Map<String, Object> habitaciones = ReportService.getAvailableRoomsReport();
-        List<Map<String, Object>> habitacionesDisponibles = 
-            (List<Map<String, Object>>) habitaciones.get("availableRooms");
+        System.out.println("\n=== HABITACIONES DISPONIBLES ===");
+        var habitaciones = servicioReporte.obtenerReporteHabitacionesDisponibles();
+        var disponibles = (List<Map<String, Object>>) habitaciones.get("habitacionesDisponibles");
         
-        System.out.println("\nHabitaciones Disponibles");
-        System.out.println("=======================");
-        for (Map<String, Object> habitacion : habitacionesDisponibles) {
-            System.out.printf("Habitación %s - Tipo: %s\n",
-                habitacion.get("roomNumber"), habitacion.get("roomType"));
-            System.out.printf("Capacidad: %d - Precio: %.2f\n",
-                habitacion.get("capacity"), habitacion.get("pricePerNight"));
-            System.out.printf("Estado: %s - Reservas actuales: %d\n",
-                habitacion.get("status"), habitacion.get("currentReservations"));
-            System.out.println();
+        for (var habitacion : disponibles) {
+            System.out.println("\nHabitación #" + habitacion.get("numHabitacion"));
+            System.out.println("Piso: " + habitacion.get("piso"));
+            System.out.println("Tipo: " + habitacion.get("tipoHabitacion"));
+            System.out.println("Capacidad: " + habitacion.get("capacidad"));
+            System.out.println("Precio por noche: " + habitacion.get("precioPorNoche"));
+            System.out.println("Estado: " + habitacion.get("estado"));
+            System.out.println("Reservas actuales: " + habitacion.get("reservasActuales"));
         }
     }
 } 

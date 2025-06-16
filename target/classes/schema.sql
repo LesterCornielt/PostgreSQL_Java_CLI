@@ -4,133 +4,166 @@ CREATE DATABASE hotel_reservation;
 -- Conectar a la base de datos
 \c hotel_reservation;
 
--- Tabla de Usuarios (entidad base para clientes, empleados y gerentes)
-CREATE TABLE users (
-    user_id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('CLIENT', 'EMPLOYEE', 'MANAGER')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Tabla de Clientes
+CREATE TABLE cliente (
+    id_cliente SERIAL PRIMARY KEY,
+    primer_nombre VARCHAR(50) NOT NULL,
+    segundo_nombre VARCHAR(50),
+    sexo CHAR(1) CHECK (sexo IN ('M', 'F', 'O')),
+    fecha_nacimiento DATE NOT NULL,
+    tipo_cliente VARCHAR(20) NOT NULL
 );
 
--- Tabla de Clientes (especialización de usuarios)
-CREATE TABLE clients (
-    client_id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(user_id),
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    identification VARCHAR(20) UNIQUE NOT NULL,
-    country VARCHAR(50) NOT NULL,
-    gender CHAR(1) CHECK (gender IN ('M', 'F', 'O')),
-    birth_date DATE NOT NULL,
-    age INTEGER GENERATED ALWAYS AS (EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM birth_date)) STORED
+-- Tabla de Teléfonos de Cliente
+CREATE TABLE telefono_cliente (
+    id_cliente INTEGER REFERENCES cliente(id_cliente),
+    telefono VARCHAR(15) NOT NULL,
+    PRIMARY KEY (id_cliente, telefono)
 );
 
--- Tabla de Empleados (especialización de usuarios)
-CREATE TABLE employees (
-    employee_id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(user_id),
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    position VARCHAR(50) NOT NULL,
-    hire_date DATE NOT NULL,
-    salary DECIMAL(10,2) NOT NULL
+-- Tabla de Emails de Cliente
+CREATE TABLE email_cliente (
+    id_cliente INTEGER REFERENCES cliente(id_cliente),
+    email VARCHAR(100) NOT NULL,
+    PRIMARY KEY (id_cliente, email)
+);
+
+-- Tabla de Tipos de Habitación
+CREATE TABLE tipo_habitacion (
+    id_tipo SERIAL PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    descripcion TEXT
+);
+
+-- Tabla de Servicios por Tipo de Habitación
+CREATE TABLE servicios_tipo (
+    id_tipo INTEGER REFERENCES tipo_habitacion(id_tipo),
+    servicio VARCHAR(100) NOT NULL,
+    PRIMARY KEY (id_tipo, servicio)
 );
 
 -- Tabla de Habitaciones
-CREATE TABLE rooms (
-    room_id SERIAL PRIMARY KEY,
-    room_number VARCHAR(10) UNIQUE NOT NULL,
-    room_type VARCHAR(50) NOT NULL,
-    capacity INTEGER NOT NULL,
-    price_per_night DECIMAL(10,2) NOT NULL,
-    status VARCHAR(20) DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'OCCUPIED', 'MAINTENANCE')),
-    description TEXT
+CREATE TABLE habitacion (
+    num_habitacion VARCHAR(10) PRIMARY KEY,
+    piso INTEGER NOT NULL,
+    estado VARCHAR(20) DEFAULT 'DISPONIBLE' CHECK (estado IN ('DISPONIBLE', 'OCUPADA', 'MANTENIMIENTO')),
+    disponible BOOLEAN DEFAULT true,
+    id_tipo INTEGER REFERENCES tipo_habitacion(id_tipo)
 );
 
--- Tabla de Características de Habitaciones (atributo multivaluado)
-CREATE TABLE room_features (
-    feature_id SERIAL PRIMARY KEY,
-    room_id INTEGER REFERENCES rooms(room_id),
-    feature_name VARCHAR(50) NOT NULL,
-    feature_value VARCHAR(100) NOT NULL
+-- Tabla de Empleados
+CREATE TABLE empleado (
+    id_empleado SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    cargo VARCHAR(50) NOT NULL,
+    supervisor_id INTEGER REFERENCES empleado(id_empleado)
+);
+
+-- Tabla de Gerentes
+CREATE TABLE gerente (
+    id_gerente INTEGER PRIMARY KEY REFERENCES empleado(id_empleado),
+    area_responsable VARCHAR(50) NOT NULL
 );
 
 -- Tabla de Reservas
-CREATE TABLE reservations (
-    reservation_id SERIAL PRIMARY KEY,
-    client_id INTEGER REFERENCES clients(client_id),
-    check_in_date DATE NOT NULL,
-    check_out_date DATE NOT NULL,
-    number_of_guests INTEGER NOT NULL,
-    total_price DECIMAL(10,2) NOT NULL,
-    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT valid_dates CHECK (check_in_date < check_out_date)
+CREATE TABLE reserva (
+    id_reserva SERIAL PRIMARY KEY,
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    total_estadia DECIMAL(10,2) NOT NULL,
+    id_cliente INTEGER REFERENCES cliente(id_cliente),
+    id_empleado INTEGER REFERENCES empleado(id_empleado),
+    CONSTRAINT valid_dates CHECK (fecha_inicio < fecha_fin)
 );
 
--- Tabla de Detalles de Reserva (interrelación N:M entre Reservas y Habitaciones)
-CREATE TABLE reservation_details (
-    reservation_id INTEGER REFERENCES reservations(reservation_id),
-    room_id INTEGER REFERENCES rooms(room_id),
-    price_per_night DECIMAL(10,2) NOT NULL,
-    PRIMARY KEY (reservation_id, room_id)
+-- Tabla de Detalles de Reserva por Habitación
+CREATE TABLE reserva_habitacion (
+    id_reserva INTEGER REFERENCES reserva(id_reserva),
+    num_habitacion VARCHAR(10) REFERENCES habitacion(num_habitacion),
+    fecha_especifica DATE NOT NULL,
+    estado VARCHAR(20) DEFAULT 'RESERVADA' CHECK (estado IN ('RESERVADA', 'OCUPADA', 'LIBERADA')),
+    PRIMARY KEY (id_reserva, num_habitacion, fecha_especifica)
+);
+
+-- Tabla de Facturas
+CREATE TABLE factura (
+    id_factura SERIAL PRIMARY KEY,
+    fecha_emision TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    monto_total DECIMAL(10,2) NOT NULL,
+    id_reserva INTEGER REFERENCES reserva(id_reserva)
 );
 
 -- Tabla de Pagos
-CREATE TABLE payments (
-    payment_id SERIAL PRIMARY KEY,
-    reservation_id INTEGER REFERENCES reservations(reservation_id),
-    amount DECIMAL(10,2) NOT NULL,
-    payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    payment_method VARCHAR(50) NOT NULL,
-    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED'))
+CREATE TABLE pago (
+    id_pago SERIAL PRIMARY KEY,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    monto DECIMAL(10,2) NOT NULL,
+    metodo VARCHAR(50) NOT NULL,
+    id_factura INTEGER REFERENCES factura(id_factura)
 );
 
--- Vistas
-CREATE VIEW available_rooms AS
-SELECT r.*, COUNT(rd.room_id) as current_reservations
-FROM rooms r
-LEFT JOIN reservation_details rd ON r.room_id = rd.room_id
-LEFT JOIN reservations res ON rd.reservation_id = res.reservation_id
-WHERE r.status = 'AVAILABLE'
-GROUP BY r.room_id;
+-- Tabla de Servicios Adicionales
+CREATE TABLE servicio_adicional (
+    id_servicio SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    costo DECIMAL(10,2) NOT NULL
+);
 
-CREATE VIEW client_reservations AS
-SELECT 
-    c.client_id,
-    c.first_name,
-    c.last_name,
-    r.reservation_id,
-    r.check_in_date,
-    r.check_out_date,
-    r.status as reservation_status,
-    COUNT(rd.room_id) as number_of_rooms,
-    r.total_price
-FROM clients c
-JOIN reservations r ON c.client_id = r.client_id
-JOIN reservation_details rd ON r.reservation_id = rd.reservation_id
-GROUP BY c.client_id, r.reservation_id;
+-- Tabla de Servicios por Reserva
+CREATE TABLE reserva_servicio (
+    id_reserva INTEGER REFERENCES reserva(id_reserva),
+    id_servicio INTEGER REFERENCES servicio_adicional(id_servicio),
+    PRIMARY KEY (id_reserva, id_servicio)
+);
 
-CREATE VIEW room_occupancy_stats AS
-SELECT 
-    r.room_id,
-    r.room_number,
-    r.room_type,
-    COUNT(res.reservation_id) as total_reservations,
-    SUM(EXTRACT(DAY FROM (res.check_out_date - res.check_in_date))) as total_days_occupied
-FROM rooms r
-LEFT JOIN reservation_details rd ON r.room_id = rd.room_id
-LEFT JOIN reservations res ON rd.reservation_id = res.reservation_id
-GROUP BY r.room_id;
+-- Vista que muestra las habitaciones disponibles y su número actual de reservas
+CREATE VIEW habitaciones_disponibles AS
+SELECT h.*, COUNT(rh.num_habitacion) as reservas_actuales
+FROM habitacion h
+LEFT JOIN reserva_habitacion rh ON h.num_habitacion = rh.num_habitacion
+LEFT JOIN reserva r ON rh.id_reserva = r.id_reserva
+WHERE h.estado = 'DISPONIBLE'
+GROUP BY h.num_habitacion;
 
-CREATE VIEW revenue_by_month AS
+-- Vista que muestra las reservas de cada cliente con detalles
+CREATE VIEW reservas_cliente AS
 SELECT 
-    EXTRACT(YEAR FROM payment_date) as year,
-    EXTRACT(MONTH FROM payment_date) as month,
-    SUM(amount) as total_revenue
-FROM payments
-WHERE status = 'COMPLETED'
-GROUP BY EXTRACT(YEAR FROM payment_date), EXTRACT(MONTH FROM payment_date)
-ORDER BY year, month; 
+    c.id_cliente,
+    c.primer_nombre,
+    c.segundo_nombre,
+    r.id_reserva,
+    r.fecha_inicio,
+    r.fecha_fin,
+    rh.estado as estado_reserva,
+    COUNT(rh.num_habitacion) as numero_habitaciones,
+    r.total_estadia
+FROM cliente c
+JOIN reserva r ON c.id_cliente = r.id_cliente
+JOIN reserva_habitacion rh ON r.id_reserva = rh.id_reserva
+GROUP BY c.id_cliente, r.id_reserva, rh.estado;
+
+-- Vista que muestra estadísticas de ocupación por habitación
+CREATE VIEW estadisticas_ocupacion_habitacion AS
+SELECT 
+    h.num_habitacion,
+    h.piso,
+    th.nombre as tipo_habitacion,
+    COUNT(r.id_reserva) as total_reservas,
+    COALESCE(SUM(DATE_PART('day', r.fecha_fin::timestamp - r.fecha_inicio::timestamp)), 0) as total_dias_ocupados
+FROM habitacion h
+LEFT JOIN tipo_habitacion th ON h.id_tipo = th.id_tipo
+LEFT JOIN reserva_habitacion rh ON h.num_habitacion = rh.num_habitacion
+LEFT JOIN reserva r ON rh.id_reserva = r.id_reserva
+GROUP BY h.num_habitacion, h.piso, th.nombre;
+
+-- Vista que muestra los ingresos mensuales
+CREATE VIEW ingresos_por_mes AS
+SELECT 
+    EXTRACT(YEAR FROM p.fecha) as año,
+    EXTRACT(MONTH FROM p.fecha) as mes,
+    SUM(p.monto) as ingreso_total
+FROM pago p
+JOIN factura f ON p.id_factura = f.id_factura
+WHERE f.fecha_emision IS NOT NULL
+GROUP BY EXTRACT(YEAR FROM p.fecha), EXTRACT(MONTH FROM p.fecha)
+ORDER BY año, mes; 
